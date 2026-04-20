@@ -11,6 +11,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 
 	"Chirpy/internal/database"
@@ -22,7 +23,7 @@ type apiConfig struct {
 	platform       string
 }
 
-// Middleware to count hits
+// Middleware
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cfg.fileserverHits.Add(1)
@@ -88,60 +89,6 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 }
 
-// /api/validate_chirp
-func handlerValidateChirp(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(405)
-		return
-	}
-
-	type parameters struct {
-		Body string `json:"body"`
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	params := parameters{}
-
-	err := decoder.Decode(&params)
-	if err != nil {
-		w.WriteHeader(500)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": "Something went wrong",
-		})
-		return
-	}
-
-	if len(params.Body) > 140 {
-		w.WriteHeader(400)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": "Chirp is too long",
-		})
-		return
-	}
-
-	badWords := map[string]bool{
-		"kerfuffle": true,
-		"sharbert":  true,
-		"fornax":    true,
-	}
-
-	words := strings.Split(params.Body, " ")
-
-	for i, word := range words {
-		if badWords[strings.ToLower(word)] {
-			words[i] = "****"
-		}
-	}
-
-	cleaned := strings.Join(words, " ")
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	json.NewEncoder(w).Encode(map[string]string{
-		"cleaned_body": cleaned,
-	})
-}
-
 // /api/users
 func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -188,6 +135,151 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(resp)
 }
 
+// POST /api/chirps
+func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Body   string `json:"body"`
+		UserID string `json:"user_id"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+
+	err := decoder.Decode(&params)
+	if err != nil {
+		w.WriteHeader(400)
+		return
+	}
+
+	if len(params.Body) > 140 {
+		w.WriteHeader(400)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Chirp is too long",
+		})
+		return
+	}
+
+	badWords := map[string]bool{
+		"kerfuffle": true,
+		"sharbert":  true,
+		"fornax":    true,
+	}
+
+	words := strings.Split(params.Body, " ")
+	for i, word := range words {
+		if badWords[strings.ToLower(word)] {
+			words[i] = "****"
+		}
+	}
+	cleaned := strings.Join(words, " ")
+
+	userUUID, err := uuid.Parse(params.UserID)
+	if err != nil {
+		w.WriteHeader(400)
+		return
+	}
+
+	chirp, err := cfg.dbQueries.CreateChirp(r.Context(), database.CreateChirpParams{
+		Body:   cleaned,
+		UserID: userUUID,
+	})
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	type response struct {
+		ID        string    `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body      string    `json:"body"`
+		UserID    string    `json:"user_id"`
+	}
+
+	resp := response{
+		ID:        chirp.ID.String(),
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID.String(),
+	}
+
+	json.NewEncoder(w).Encode(resp)
+}
+
+// GET /api/chirps
+func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
+	chirps, err := cfg.dbQueries.GetChirps(r.Context())
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+
+	type response struct {
+		ID        string    `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body      string    `json:"body"`
+		UserID    string    `json:"user_id"`
+	}
+
+	resp := []response{}
+
+	for _, chirp := range chirps {
+		resp = append(resp, response{
+			ID:        chirp.ID.String(),
+			CreatedAt: chirp.CreatedAt,
+			UpdatedAt: chirp.UpdatedAt,
+			Body:      chirp.Body,
+			UserID:    chirp.UserID.String(),
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	json.NewEncoder(w).Encode(resp)
+}
+
+// GET /api/chirps/{chirpID}
+func (cfg *apiConfig) handlerGetChirpByID(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("chirpID")
+
+	chirpID, err := uuid.Parse(idStr)
+	if err != nil {
+		w.WriteHeader(400)
+		return
+	}
+
+	chirp, err := cfg.dbQueries.GetChirp(r.Context(), chirpID)
+	if err != nil {
+		w.WriteHeader(404)
+		return
+	}
+
+	type response struct {
+		ID        string    `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body      string    `json:"body"`
+		UserID    string    `json:"user_id"`
+	}
+
+	resp := response{
+		ID:        chirp.ID.String(),
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID.String(),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	json.NewEncoder(w).Encode(resp)
+}
+
 func main() {
 	godotenv.Load()
 
@@ -213,8 +305,12 @@ func main() {
 	mux.Handle("/app", apiCfg.middlewareMetricsInc(http.StripPrefix("/app", fileServer)))
 
 	mux.HandleFunc("/api/healthz", handlerHealthz)
-	mux.HandleFunc("/api/validate_chirp", handlerValidateChirp)
 	mux.HandleFunc("/api/users", apiCfg.handlerCreateUser)
+
+	// Chirps routes
+	mux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)
+	mux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirp)
+	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.handlerGetChirpByID)
 
 	mux.HandleFunc("/admin/metrics", apiCfg.handlerAdminMetrics)
 	mux.HandleFunc("/admin/reset", apiCfg.handlerReset)
