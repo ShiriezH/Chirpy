@@ -91,6 +91,42 @@ go run .
 
 --- 
 
+## Usage
+
+Example requests using curl:
+
+### Create a User
+```bash
+curl -X POST http://localhost:8080/api/users \
+-H "Content-Type: application/json" \
+-d '{"email":"test@example.com","password":"password123"}'
+```
+
+### Login
+```bash
+curl -X POST http://localhost:8080/api/login \
+-H "Content-Type: application/json" \
+-d '{"email":"test@example.com","password":"password123"}'
+```
+
+### Create a Chirp
+```bash
+curl -X POST http://localhost:8080/api/chirps \
+-H "Authorization: Bearer YOUR_TOKEN" \
+-H "Content-Type: application/json" \
+-d '{"body":"Hello Chirpy!"}'
+```
+
+## Contributing
+
+Contributions, issues, and feature requests are welcome.
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to your branch
+5. Open a pull request
+
 ## API Overview
 
 ### Users
