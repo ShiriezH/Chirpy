@@ -39,7 +39,7 @@ Chirpy was built to practice building a real-world backend API using:
 
 ---
 
-## Installation
+## Quick Start
 
 ### 1. Clone the repo
 
