@@ -44,7 +44,7 @@ Chirpy was built to practice building a real-world backend API using:
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/ShiriezH/Chirpy
+git clone https://github.com/Your_Git_Name/Chirpy
 cd Chirpy
 ```
 ---
